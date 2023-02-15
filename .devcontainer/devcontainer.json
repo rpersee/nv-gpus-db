@@ -1,5 +1,5 @@
 {
-	"name": "Jupyter Data Science Notebooks (Community)",
+	"name": "Jupyter Notebook",
 	"build": {
 		"dockerfile": "Dockerfile"
 	},
