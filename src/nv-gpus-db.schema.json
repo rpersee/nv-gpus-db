@@ -1,0 +1,71 @@
+{
+  "type": "object",
+  "required": [
+    "date",
+    "categories"
+  ],
+  "properties": {
+    "date": {},
+    "categories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/category"
+      }
+    }
+  },
+  "$defs": {
+    "gpu": {
+      "type": "object",
+      "required": [
+        "model",
+        "launch",
+        "code_name"
+      ],
+      "properties": {
+        "model": {},
+        "launch": {},
+        "code_name": {},
+        "core_config": {},
+        "mem_bandwidth": {},
+        "mem_bus_width": {},
+        "mem_size": {}
+      }
+    },
+    "generation": {
+      "type": "object",
+      "required": [
+        "name",
+        "gpus"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "gpus": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gpu"
+          }
+        }
+      }
+    },
+    "category": {
+      "type": "object",
+      "required": [
+        "name",
+        "generations"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "generations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/generation"
+          }
+        }
+      }
+    }
+  }
+}
