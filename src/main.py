@@ -1,39 +1,76 @@
 #!/usr/bin/env python3
 
+import json
+import re
+from collections.abc import Callable, Iterator
+from datetime import datetime
+from functools import partial, reduce
+
+import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-import re
-import pandas as pd
-from functools import partial, reduce
-import json
-from datetime import datetime
+from bs4.element import Tag
 
 
 def css_escape(string: str) -> str:
+    """Escapes special characters in a CSS selector string.
+
+    :param string: The CSS selector string to escape.
+    :return: The escaped CSS selector string.
+    """
     return re.sub(r'([\[\]{}()])', r'\\\1', string)
 
 
-def compose(*fns):
+def compose(*fns: Callable) -> Callable:
+    """Composes multiple functions into a single function.
+
+    :param fns: The functions to compose.
+    :return: The composed function.
+    """
+
     return reduce(lambda f, g: lambda x: f(g(x)), fns, lambda x: x)
 
 
-def clean(*strs: str) -> str:
-    # bottom-up function execution
-    cleaner = compose(
-        str.strip,  # remove leading and trailling spaces
-        partial(re.sub, r'\[.*?\]', ''),  # remove references like '[1]'
-    )
-    for s in strs:
-        yield cleaner(s)
+# noinspection PyDictDuplicateKeys
+unicode_trans = str.maketrans({
+    '\N{NO-BREAK SPACE}': ' ',  # \u00a0
+    '\N{SOFT HYPHEN}': '',  # \u00ad
+    '\N{NON-BREAKING HYPHEN}': '-',  # \u2011
+    '\N{FIGURE DASH}': '-',  # \u2012
+    '\N{EN DASH}': '-',  # \u2013
+    '\N{EM DASH}': '-',  # \u2014
+    '\N{MULTIPLICATION SIGN}': 'x',  # \u00D7
+})
+
+# bottom-up function execution
+clean = compose(
+    str.strip,  # remove leading and trailing spaces
+    lambda s: s.translate(unicode_trans),  # replace unicode chars
+    partial(re.sub, r'\[.*?\]', ''),  # remove references like '[1]'
+)
 
 
-def fmt_headers(*strs) -> str:
-    # remove duplicates while while preserving order
-    for s in dict.fromkeys(strs).keys():
-        yield s
+def uniq(*strs: str) -> Iterator[str]:
+    """Filter out duplicated strings.
+
+    :param strs: The strings to deduplicate.
+    :return: An iterator over the deduplicated strings.
+    """
+
+    # remove duplicates while preserving order
+    yield from dict.fromkeys(strs).keys()
 
 
-def find_flat_children(tag, name, **attrs):
+# noinspection PyUnresolvedReferences
+def find_flat_children(tag: Tag, name: str, **attrs: dict[str, str]) -> Iterator[Tag]:
+    """Returns an iterator over sibling HTML tags with the specified tag name and attributes,
+    until a tag with the same name is found.
+
+    :param tag: The HTML tag whose siblings to search.
+    :param name: The tag name to search for.
+    :param attrs: A dictionary of attributes and their values that the tags must have.
+    :return: An iterator over the matching HTML tags.
+    """
     for sibling in tag.next_siblings:
         if sibling.name == tag.name:
             return
@@ -45,8 +82,7 @@ def find_flat_children(tag, name, **attrs):
 
 
 if __name__ == "__main__":
-    r = requests.get(
-        'https://en.wikipedia.org/wiki/List_of_Nvidia_graphics_processing_units')
+    r = requests.get('https://en.wikipedia.org/wiki/List_of_Nvidia_graphics_processing_units')
     soup = BeautifulSoup(r.text, 'lxml')
     date_now = datetime.now()
 
@@ -55,9 +91,10 @@ if __name__ == "__main__":
     for h2 in soup.select('#mw-content-text > div.mw-parser-output > h2'):
         for h3 in find_flat_children(h2, 'h3'):
             table = next(find_flat_children(h3, 'table'), None)
-            if not table:
+            if table is None:
                 continue
 
+            # concatenate all tables found in the current h3 element
             df = pd.concat(pd.read_html(str(table)), axis=1)
             cat_name = h2.select_one('span.mw-headline').text
             gen_name = h3.select_one('span.mw-headline').text
@@ -72,21 +109,28 @@ if __name__ == "__main__":
     }
 
     for cat_name in dataframes.keys():
-        category = {}
-        category['name'] = cat_name
-        category['generations'] = []
+        category = {
+            'name': cat_name,
+            'generations': []
+        }
 
         for gen_name in dataframes[cat_name].keys():
-            generation = {}
-            generation['name'] = gen_name
+            generation = {
+                'name': gen_name
+            }
 
-            cleaned = dataframes[cat_name][gen_name].applymap(
-                lambda s: next(clean(s)) if isinstance(s, str) else s)
-            cleaned.columns = [': '.join(fmt_headers(*clean(*col)))
-                               for col in cleaned.columns]
+            df = dataframes[cat_name][gen_name]
 
-            generation['gpus'] = cleaned.to_dict(orient='records')
+            # apply clean() on string columns
+            str_cols = df.columns[df.dtypes == 'object']
+            df[str_cols] = df[str_cols].fillna("NaN").applymap(clean)
+
+            # apply clean() and join multi-row headers
+            df.columns = df.columns.map(lambda col: ': '.join(uniq(*map(clean, col))))
+
+            generation['gpus'] = df.to_dict(orient='records')
             category['generations'].append(generation)
+
         parsed['categories'].append(category)
 
     print(json.dumps(parsed, indent=4))
