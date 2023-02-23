@@ -3,7 +3,7 @@
 import json
 import re
 from collections.abc import Callable, Iterator
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial, reduce
 
 import pandas as pd
@@ -84,7 +84,8 @@ def find_flat_children(tag: Tag, name: str, **attrs: dict[str, str]) -> Iterator
 if __name__ == "__main__":
     r = requests.get('https://en.wikipedia.org/wiki/List_of_Nvidia_graphics_processing_units')
     soup = BeautifulSoup(r.text, 'lxml')
-    date_now = datetime.now()
+    # set time zone and remove microseconds to conform to the JSON Schema ISO8601 date-time format
+    date_now = datetime.now(timezone.utc).replace(microsecond=0)
 
     dataframes = {}
 
