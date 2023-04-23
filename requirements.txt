@@ -2,3 +2,4 @@ lxml
 pandas
 beautifulsoup4
 requests
+pydantic
